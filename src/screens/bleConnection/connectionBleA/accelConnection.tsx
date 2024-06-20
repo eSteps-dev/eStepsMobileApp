@@ -4,7 +4,7 @@ import { NativeModules, NativeEventEmitter, View, Text, TouchableOpacity, StyleS
 interface AccelProps {
   device: string;
 }
-function AccelConnectionViewA({ device }: AccelProps) {
+const AccelConnectionViewA = ({ device }: AccelProps) => {
   const { AccelConnectionA } = NativeModules;
   const eventEmitter = new NativeEventEmitter(AccelConnectionA);
   const [accelSubscription, setAccelSubscription] = useState<boolean>(false);
@@ -65,7 +65,7 @@ function AccelConnectionViewA({ device }: AccelProps) {
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   button: {

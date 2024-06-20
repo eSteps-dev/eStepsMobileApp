@@ -7,7 +7,7 @@ import GyroConnectionViewA from './gyroConnection';
 interface HomeProps {
   device: string;
 }
-export function HomeConnectionBleA({ device }: HomeProps) {
+export const HomeConnectionBleA = ({ device }: HomeProps) => {
   return (
     <View style={styles.container}>
       <Text style={styles.textStyle}>Device: {device}</Text>
@@ -16,7 +16,7 @@ export function HomeConnectionBleA({ device }: HomeProps) {
       <GyroConnectionViewA device={device} />
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {

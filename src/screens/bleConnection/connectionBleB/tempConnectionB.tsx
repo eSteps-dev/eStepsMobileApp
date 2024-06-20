@@ -4,7 +4,7 @@ import { NativeModules, NativeEventEmitter, View, Text, StyleSheet } from 'react
 interface TempProps {
   device: string;
 }
-function TempViewB({ device }: TempProps) {
+const TempViewB = ({ device }: TempProps) => {
   const { TempConnectionB } = NativeModules;
   const eventEmitter = new NativeEventEmitter(TempConnectionB);
   const [tempSubscription, setTempSubscription] = useState<boolean>(false);
@@ -38,7 +38,7 @@ function TempViewB({ device }: TempProps) {
       <Text style={styles.text}>{data}</Text>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {

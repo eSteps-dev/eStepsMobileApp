@@ -4,7 +4,7 @@ import { NativeModules, NativeEventEmitter, View, Text, TouchableOpacity, StyleS
 interface GyroProps {
   device: string;
 }
-function GyroConnectionViewB({ device }: GyroProps) {
+const GyroConnectionViewB = ({ device }: GyroProps) => {
   const { GyroConnectionB } = NativeModules;
   const eventEmitter = new NativeEventEmitter(GyroConnectionB);
   const [gyroSubscription, setGyroSubscription] = useState<boolean>(false);
@@ -65,7 +65,7 @@ function GyroConnectionViewB({ device }: GyroProps) {
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   button: {
