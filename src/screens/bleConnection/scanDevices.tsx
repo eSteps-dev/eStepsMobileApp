@@ -3,6 +3,24 @@ import { View, Text, PermissionsAndroid, StyleSheet, ScrollView } from 'react-na
 import { BleManager } from 'react-native-ble-plx';
 import { HomeConnectionBleA } from './connectionBleA';
 import { HomeConnectionBleB } from './connectionBleB';
+import CalibrateSensor from './calibrateSensor';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import init from 'react_native_mqtt';
+import ResetCalibrationData from './resetDataCalibration';
+
+init({
+  size: 10000,
+  storageBackend: AsyncStorage,
+  defaultExpires: 1000 * 3600 * 24,
+  enableCache: true,
+  sync: {},
+});
+const options = {
+  host: 'broker.emqx.io',
+  port: 8083,
+  path: '/Esteps/data',
+};
+const client = new Paho.MQTT.Client(options.host, options.port, options.path);
 
 const requestLocationPermission = async () => {
   try {
@@ -30,7 +48,16 @@ export function ScanDevices(): React.JSX.Element {
       setAccesGranted(true);
     });
   }, []);
-
+  const OnConnect = () => console.log('Connected');
+  useEffect(() => {
+    if (!client.isConnected())
+      client.connect({
+        onSuccess: OnConnect,
+        onFailure: function (error: any) {
+          console.log('Faild to connect from Accel', error);
+        },
+      });
+  }, []);
   useEffect(() => {
     if (accesGranted) {
       const manager = new BleManager();
@@ -56,6 +83,7 @@ export function ScanDevices(): React.JSX.Element {
       const existDev = devicesList.find((dev: any) => dev === device?.id);
       if (device?.name === 'MetaWear' && !existDev) {
         devicesList.push(device.id);
+
         setDevices([...devicesList]); // Update the devices state
       }
     });
@@ -64,24 +92,22 @@ export function ScanDevices(): React.JSX.Element {
       return;
     }
   };
-  if (devices.length !== 2) {
-    return (
-      <View style={styles.loading}>
-        <Text style={styles.loadingText}>Loading ..........</Text>
-      </View>
-    );
-  }
 
   return (
     <ScrollView style={styles.container}>
-      {devices.length === 2 && (
+      {devices.length >= 1 && (
         <>
           <View key={devices?.[0]} style={styles.deviceContainer}>
-            <HomeConnectionBleA device={devices?.[0]} />
+            {/* <ResetCalibrationData device={devices?.[0]} /> */}
+            {/* <CalibrateSensor device={devices?.[0]} /> */}
+            {/* <UpgradeFirmware device={devices?.[0]} /> */}
+            <HomeConnectionBleA device={devices?.[0]} client={client} />
           </View>
-          <View key={devices?.[1]} style={styles.deviceContainer}>
-            <HomeConnectionBleB device={devices?.[1]} />
-          </View>
+          {devices?.[1] && (
+            <View key={devices?.[1]} style={styles.deviceContainer}>
+              <HomeConnectionBleB device={devices?.[1]} client={client} />
+            </View>
+          )}
         </>
       )}
     </ScrollView>
@@ -93,7 +119,8 @@ const styles = StyleSheet.create({
   },
 
   deviceContainer: {
-    height: 400,
+    flex: 1,
+    height: 500,
     padding: 10,
   },
   loading: {

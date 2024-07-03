@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { NativeModules, NativeEventEmitter, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { NativeModules, NativeEventEmitter, View, Text, StyleSheet } from 'react-native';
 
 interface AccelProps {
   device: string;
+  client: any;
 }
-const AccelConnectionViewB = ({ device }: AccelProps) => {
+const AccelConnectionViewB = ({ device, client }: AccelProps) => {
   const { AccelConnectionB } = NativeModules;
   const eventEmitter = new NativeEventEmitter(AccelConnectionB);
-  const [accelSubscription, setAccelSubscription] = useState<boolean>(false);
 
   const [data, setData] = useState({
     x: 0,
@@ -17,13 +17,27 @@ const AccelConnectionViewB = ({ device }: AccelProps) => {
 
   useEffect(() => {
     const subscription = eventEmitter.addListener('accelDataB', (accelDataB) => {
-      const [x, y, z] = accelDataB.split('/');
+      const { x, y, z, serialNumber } = accelDataB;
+
       setData((prevData) => ({
         ...prevData,
         x,
         y,
         z,
       }));
+      const dataAccel = { x, y, z };
+      if (accelDataB) {
+        const message = new Paho.MQTT.Message(JSON.stringify(dataAccel));
+        message.destinationName = `${serialNumber}/accel`;
+        const sendMqttMessage = () => {
+          if (client.isConnected()) {
+            client.send(message);
+          } else {
+            console.log('Not connected from Accel B');
+          }
+        };
+        sendMqttMessage();
+      }
     });
 
     // Clean up the subscription when the component unmounts
@@ -34,7 +48,6 @@ const AccelConnectionViewB = ({ device }: AccelProps) => {
 
   useEffect(() => {
     AccelConnectionB.bindAccelService(device);
-    setAccelSubscription(!accelSubscription);
 
     return () => {
       AccelConnectionB.removeListeners('false');
@@ -42,27 +55,12 @@ const AccelConnectionViewB = ({ device }: AccelProps) => {
     };
   }, []);
 
-  const handleRemoveAccelSub = () => {
-    AccelConnectionB.removeListeners('false');
-    AccelConnectionB.unbindAccelService();
-
-    setAccelSubscription(!accelSubscription);
-  };
-  const handleAccelSub = () => {
-    AccelConnectionB.bindAccelService(device);
-    setAccelSubscription(!accelSubscription);
-  };
   return (
     <View style={styles.container}>
       <Text style={styles.text}>Accel: {device}</Text>
       <Text style={styles.text}>x: {data.x}</Text>
       <Text style={styles.text}>y: {data.y}</Text>
       <Text style={styles.text}>z: {data.z}</Text>
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity onPress={accelSubscription ? handleRemoveAccelSub : handleAccelSub} style={styles.button}>
-          <Text>{accelSubscription ? 'On' : 'Off'}</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };

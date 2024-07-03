@@ -32,8 +32,13 @@ public class BlePackage implements ReactPackage {
         modules.add(new TempConnectionA(reactContext));
         modules.add(new TempConnectionB(reactContext));
 
+        modules.add(new CalibrateSensorB(reactContext));
+        modules.add(new CalibrateSensorA(reactContext));
 
+        modules.add(new ResetMacroDataA(reactContext));
+        modules.add(new ResetMacroDataB(reactContext));
 
+        modules.add(new upgradeFirmwareVersion(reactContext));
 
         return modules;
     }

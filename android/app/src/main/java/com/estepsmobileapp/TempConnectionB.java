@@ -11,11 +11,14 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.mbientlab.metawear.Data;
+import com.mbientlab.metawear.DeviceInformation;
 import com.mbientlab.metawear.MetaWearBoard;
 import com.mbientlab.metawear.Route;
 import com.mbientlab.metawear.Subscriber;
@@ -28,6 +31,7 @@ import com.mbientlab.metawear.module.GyroBmi160;
 import com.mbientlab.metawear.module.Temperature;
 import com.mbientlab.metawear.module.Temperature.SensorType;
 import com.mbientlab.metawear.module.Temperature.ExternalThermistor;
+import com.mbientlab.metawear.module.Timer;
 
 import bolts.Continuation;
 import bolts.Task;
@@ -57,7 +61,14 @@ public class TempConnectionB extends ReactContextBaseJavaModule implements Servi
         Context context = reactContext.getApplicationContext();
         context.unbindService(this);
         if (board != null) {
-            board.disconnectAsync();
+            board.disconnectAsync().continueWith(new Continuation<Void, Void>() {
+                @Override
+                public Void then(Task<Void> task) throws Exception {
+                    Log.i("MainActivity", "Disconnected");
+                    return null;
+                }
+            });
+            board.tearDown();
             board = null;
 
         }
@@ -79,7 +90,6 @@ public class TempConnectionB extends ReactContextBaseJavaModule implements Servi
     @Override
     public void onServiceConnected(ComponentName name, IBinder service) {
         serviceBinder = (BtleService.LocalBinder) service;
-        Log.i("device", device);
         retrieveBoard(device);
     }
 
@@ -97,20 +107,25 @@ public class TempConnectionB extends ReactContextBaseJavaModule implements Servi
     private void retrieveBoard(final String MW_MAC_ADDRESS) {
         final BluetoothManager btManager = (BluetoothManager) reactContext.getSystemService(Context.BLUETOOTH_SERVICE);
         final BluetoothDevice remoteDevice = btManager.getAdapter().getRemoteDevice(MW_MAC_ADDRESS);
-// only for RPro, CPro, Env, and Motion boards
+        final String[] serialNumber = new String[1];
 
-// Create a MetaWear board object for the Bluetooth Device
+        // Create a MetaWear board object for the Bluetooth Device
         board = serviceBinder.getMetaWearBoard(remoteDevice);
 
         board.connectAsync().onSuccessTask(new Continuation<Void, Task<Void>>() {
             @Override
             public Task<Void> then(Task<Void> task) throws Exception {
+                board.readDeviceInformationAsync().continueWith((Continuation<DeviceInformation, Void>) task1 -> {
+                    serialNumber[0] = task1.getResult().serialNumber;
+                    return null;
+                });
                 temperature = board.getModule(Temperature.class);
                 board.getModule(BarometerBosch.class).start();
                 tempSensor = temperature.findSensors(SensorType.PRESET_THERMISTOR)[0];
                 // Read data from pin 0, pulldown resistor is on pin 1, active low
                 ((ExternalThermistor) temperature.findSensors(SensorType.EXT_THERMISTOR)[0])
                         .configure((byte) 0, (byte) 1, false);
+                Timer timerModule = board.getModule(Timer.class);
 
                 return tempSensor.addRouteAsync(new RouteBuilder() {
                     @Override
@@ -119,25 +134,44 @@ public class TempConnectionB extends ReactContextBaseJavaModule implements Servi
                             @Override
                             public void apply(Data data, Object ... env) {
                                 double temp = data.value(Float.class).doubleValue();
-                                emitTempData(temp);
+                                Log.i("temPB", String.valueOf(temp));
+
+                                sendDataToRN(temp, serialNumber[0]);
                             }
                         });
                     }
-                }).continueWith(new Continuation<Route, Void>() {
+                }).continueWithTask(new Continuation<Route, Task<Timer.ScheduledTask>>() {
                     @Override
-                    public Void then(Task<Route> task) throws Exception {
-                        tempSensor.read();
-                        return null;
+                    public Task<Timer.ScheduledTask> then(Task<Route> task) throws Exception {
+                        return timerModule.scheduleAsync(30*60*1000, false, () -> {
+                            tempSensor.read();
+                        });
+                    };
+
+                }).continueWithTask(task2 -> {
+                    final long test_timer_id = task2.getResult().id();
+                    Timer.ScheduledTask timer = timerModule.lookupScheduledTask(((byte) test_timer_id));
+                    if(timer != null) {
+                        timer.start();
                     }
+                    return  null;
                 });
             }
         });
     }
-    @SuppressLint("DefaultLocale")
-    private void emitTempData(double temp) {
-        reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit("tempDataB", String.format("%f", temp));
+
+
+    @ReactMethod
+    public void sendDataToRN(double temp, String serialNumber) {
+        reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("tempDataA", createEventData(temp, serialNumber));
+    }
+
+    private WritableMap createEventData(double temp, String serialNumber) {
+        WritableMap eventData = Arguments.createMap();
+        eventData.putString("serialNumber", serialNumber);
+        eventData.putDouble("temp", temp);
+        return eventData;
     }
 }
 

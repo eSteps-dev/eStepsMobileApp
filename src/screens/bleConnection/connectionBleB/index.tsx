@@ -6,14 +6,15 @@ import GyroConnectionViewB from './gyroConnectionB';
 
 interface HomeProps {
   device: string;
+  client: string;
 }
-export const HomeConnectionBleB = ({ device }: HomeProps) => {
+export const HomeConnectionBleB = ({ device, client }: HomeProps) => {
   return (
     <View style={styles.container}>
       <Text style={styles.textStyle}>Device: {device}</Text>
-      <TempViewB device={device} />
-      <AccelConnectionViewB device={device} />
-      <GyroConnectionViewB device={device} />
+      <TempViewB device={device} client={client} />
+      <AccelConnectionViewB device={device} client={client} />
+      <GyroConnectionViewB device={device} client={client} />
     </View>
   );
 };

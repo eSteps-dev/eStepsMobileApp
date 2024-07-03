@@ -3,17 +3,31 @@ import { NativeEventEmitter, View, Text, StyleSheet, NativeModules } from 'react
 
 interface TempProps {
   device: string;
+  client: any;
 }
-const TempViewA = ({ device }: TempProps) => {
+const TempViewA = ({ device, client }: TempProps) => {
   const { TempConnectionA } = NativeModules;
   const eventEmitter = new NativeEventEmitter(TempConnectionA);
-  const [tempSubscription, setTempSubscription] = useState<boolean>(false);
 
   const [data, setData] = useState<any>();
 
   useEffect(() => {
     const subscription = eventEmitter.addListener('tempDataA', (tempDataA: any) => {
-      setData(tempDataA);
+      const { temp, serialNumber } = tempDataA;
+
+      setData(temp);
+      if (tempDataA) {
+        const message = new Paho.MQTT.Message(JSON.stringify(temp));
+        message.destinationName = `${serialNumber}/temp`;
+        const sendMqttMessage = () => {
+          if (client.isConnected()) {
+            client.send(message);
+          } else {
+            console.log('Not connected from Temp A');
+          }
+        };
+        sendMqttMessage();
+      }
     });
 
     // Clean up the subscription when the component unmounts
@@ -24,7 +38,6 @@ const TempViewA = ({ device }: TempProps) => {
 
   useEffect(() => {
     TempConnectionA.bindTempService(device);
-    setTempSubscription(!tempSubscription);
     // Clean up the tempConnection and remove listeners when the component unmounts
     return () => {
       TempConnectionA.removeListeners('false');

@@ -6,14 +6,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.mbientlab.metawear.Data;
+import com.mbientlab.metawear.DeviceInformation;
 import com.mbientlab.metawear.MetaWearBoard;
 import com.mbientlab.metawear.Route;
 import com.mbientlab.metawear.Subscriber;
@@ -62,7 +66,14 @@ public class AccelConnectionB extends ReactContextBaseJavaModule implements Serv
         Context context = reactContext.getApplicationContext();
         context.unbindService(this);
         if (board != null) {
-            board.disconnectAsync();
+            board.disconnectAsync().continueWith(new Continuation<Void, Void>() {
+                @Override
+                public Void then(Task<Void> task) throws Exception {
+                    Log.i("MainActivity", "Disconnected");
+                    return null;
+                }
+            });
+            board.tearDown();
             board = null;
 
         }
@@ -87,15 +98,21 @@ public class AccelConnectionB extends ReactContextBaseJavaModule implements Serv
     private void retrieveBoard(final String MW_MAC_ADDRESS) {
         final BluetoothManager btManager = (BluetoothManager) reactContext.getSystemService(Context.BLUETOOTH_SERVICE);
         final BluetoothDevice remoteDevice = btManager.getAdapter().getRemoteDevice(MW_MAC_ADDRESS);
+        final String[] serialNumber = new String[1];
+
         // Create a MetaWear board object for the Bluetooth Device
         board= serviceBinder.getMetaWearBoard(remoteDevice);
 
         board.connectAsync().onSuccessTask(new Continuation<Void, Task<Void>>() {
             @Override
             public Task<Void> then(Task<Void> task) throws Exception {
+                board.readDeviceInformationAsync().continueWith((Continuation<DeviceInformation, Void>) task1 -> {
+                    serialNumber[0] = task1.getResult().serialNumber;
+                    return null;
+                });
                 accelerometer = board.getModule(Accelerometer.class);
                 accelerometer.configure()
-                        .odr(25f)       // Set sampling frequency to 25Hz, or closest valid ODR
+                        .odr(1f)       // Set sampling frequency to 25Hz, or closest valid ODR
                         .commit();
                 return accelerometer.acceleration().addRouteAsync(new RouteBuilder() {
                     @Override
@@ -107,7 +124,7 @@ public class AccelConnectionB extends ReactContextBaseJavaModule implements Serv
                                 double x = data.value(Acceleration.class).x();
                                 double y = data.value(Acceleration.class).y();
                                 double z = data.value(Acceleration.class).z();
-                                emitAccelData(x, y, z);
+                                sendDataToRN(x, y, z, serialNumber[0]);
 
                             }
                         });
@@ -123,10 +140,20 @@ public class AccelConnectionB extends ReactContextBaseJavaModule implements Serv
             }
         });
     }
-    private void emitAccelData(double x, double y, double z) {
-        reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit("accelDataB", String.format("%f/ %f/ %f", x, y, z));
+    @ReactMethod
+    public void sendDataToRN(double x, double y, double z, String serialNumber) {
+        reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("accelDataB", createEventData(x, y, z, serialNumber));
+    }
+
+    private WritableMap createEventData(double x, double y, double z, String serialNumber) {
+        WritableMap eventData = Arguments.createMap();
+        eventData.putString("serialNumber", serialNumber);
+
+        eventData.putDouble("x", x);
+        eventData.putDouble("y", y);
+        eventData.putDouble("z", z);
+        return eventData;
     }
     @NonNull
     @Override

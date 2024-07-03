@@ -6,14 +6,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.mbientlab.metawear.Data;
+import com.mbientlab.metawear.DeviceInformation;
 import com.mbientlab.metawear.MetaWearBoard;
 import com.mbientlab.metawear.Route;
 import com.mbientlab.metawear.Subscriber;
@@ -55,7 +59,14 @@ public class GyroConnectionB extends ReactContextBaseJavaModule implements Servi
         Context context = reactContext.getApplicationContext();
         context.unbindService(this);
         if (board != null) {
-            board.disconnectAsync();
+            board.disconnectAsync().continueWith(new Continuation<Void, Void>() {
+                @Override
+                public Void then(Task<Void> task) throws Exception {
+                    Log.i("MainActivity", "Disconnected");
+                    return null;
+                }
+            });
+            board.tearDown();
             board = null;
 
         }
@@ -80,6 +91,7 @@ public class GyroConnectionB extends ReactContextBaseJavaModule implements Servi
     private void retrieveBoard(final String MW_MAC_ADDRESS) {
         final BluetoothManager btManager = (BluetoothManager) reactContext.getSystemService(Context.BLUETOOTH_SERVICE);
         final BluetoothDevice remoteDevice = btManager.getAdapter().getRemoteDevice(MW_MAC_ADDRESS);
+        final String[] serialNumber = new String[1];
 
 // Create a MetaWear board object for the Bluetooth Device
         board = serviceBinder.getMetaWearBoard(remoteDevice);
@@ -87,7 +99,12 @@ public class GyroConnectionB extends ReactContextBaseJavaModule implements Servi
         board.connectAsync().onSuccessTask(new Continuation<Void, Task<Void>>() {
             @Override
             public Task<Void> then(Task<Void> task) throws Exception {
+                board.readDeviceInformationAsync().continueWith((Continuation<DeviceInformation, Void>) task1 -> {
+                    serialNumber[0] = task1.getResult().serialNumber;
+                    return null;
+                });
                 gyro = board.getModule(Gyro.class);
+                gyro.configure().odr(Gyro.OutputDataRate.ODR_25_HZ).commit();
 
                 return gyro.angularVelocity().addRouteAsync(new RouteBuilder() {
                     @Override
@@ -99,7 +116,7 @@ public class GyroConnectionB extends ReactContextBaseJavaModule implements Servi
                                 double x = data.value(AngularVelocity.class).x();
                                 double y = data.value(AngularVelocity.class).y();
                                 double z = data.value(AngularVelocity.class).z();
-                                emitGyroData(x, y, z);
+                                sendDataToRN(x, y, z, serialNumber[0]);
                             }
                         });
                     }
@@ -114,10 +131,19 @@ public class GyroConnectionB extends ReactContextBaseJavaModule implements Servi
         });
     }
 
-    private void emitGyroData(double x, double y, double z) {
-        reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit("gyroDataB", String.format("%f/ %f/ %f", x, y, z));
+    @ReactMethod
+    public void sendDataToRN(double x, double y, double z, String serialNumber) {
+        reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("gyroDataB", createEventData(x, y, z, serialNumber));
+    }
+
+    private WritableMap createEventData(double x, double y, double z, String serialNumber) {
+        WritableMap eventData = Arguments.createMap();
+        eventData.putString("serialNumber", serialNumber);
+        eventData.putDouble("x", x);
+        eventData.putDouble("y", y);
+        eventData.putDouble("z", z);
+        return eventData;
     }
     @Override
     public void onServiceDisconnected(ComponentName name) {
